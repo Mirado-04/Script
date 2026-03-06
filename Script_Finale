@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+
+import csv # Module permettant d'intéragir avec le fichier csv
+import requests  # Module permettant de lancer une requête HTTP vers une URL et de récupérer la réponse.
+import json # Module permettant le traitement de données
+import urllib.parse  #Module permettant d'analyser les URL
+import webbrowser # Module permettant d’ouvrir automatiquement une page web dans le navigateur
+import os # Module permettant d'intéragir avec le système d'exploitation
+
+
+def generer_graphique_juxtapose():
+    # URL du CSV
+    csv_url = "https://www.data.gouv.fr/api/1/datasets/r/5e662e9b-f033-44fa-9e9a-a5b40fec2cd3"
+
+    filename = "baccalaureat_par_academie.csv"
+
+    # Créer le dossier de destination
+    os.makedirs("Données", exist_ok=True)
+    
+    print(" Téléchargement des données...")
+    response = requests.get(csv_url)
+    response.raise_for_status()
+    
+    # Enregistrement du fichier dans répertoire 
+    filepath = os.path.join("Données", filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(response.text)
+    print(f" Fichier sauvegardé sous : {filepath}")
+
+    reader = csv.DictReader(response.text.splitlines(), delimiter=';')
+
+    # Académies étudiées
+    villes_cibles = ["PARIS", "LILLE", "LYON", "NANTES", "VERSAILLES"]
+
+    stats = {v: {"presents": 0, "admis": 0, "refuses": 0} for v in villes_cibles}
+
+    # Traitement du CSV
+    for row in reader:
+        ville = row.get("Libellé académie").strip().upper()
+
+        if ville in villes_cibles:
+            try:
+                presents = int(row.get("Nombre de présents") or 0)
+                admis = int(row.get("Nombre d'admis totaux") or 0)
+
+                stats[ville]["presents"] += presents
+                stats[ville]["admis"] += admis
+                stats[ville]["refuses"] += max(0, presents - admis)
+                # calcul des nombres de participants présents, admis et refusé
+            except ValueError:
+                pass
+
+    labels = list(stats.keys()) # prend en argument les villes concernés
+
+    taux_admis = [
+        round(stats[v]["admis"] / stats[v]["presents"] * 100, 2)
+        if stats[v]["presents"] else 0
+        for v in labels
+    ]
+
+    taux_echec = [
+        round(stats[v]["refuses"] / stats[v]["presents"] * 100, 2)
+        if stats[v]["presents"] else 0
+        for v in labels
+    ]
+
+    # Configuration QuickChart
+    config = {
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": [
+                {
+                    "label": "Taux d'admis (%)",
+                    "data": taux_admis,
+                    "backgroundColor": "rgba(60, 179, 113, 0.8)"
+                },
+                {
+                    "label": "Taux d'échec (%)",
+                    "data": taux_echec,
+                    "backgroundColor": "rgba(220, 20, 60, 0.8)"
+                }
+            ]
+        },
+        "options": {
+            "scales": {
+                "yAxes": [{
+                    "ticks": {
+                        "beginAtZero": True,
+                        "max": 100
+                    }
+                }]
+            },
+            "title": {
+                "display": True,
+                "text": "Comparaison des taux d'admission et d'échec (%)"
+            }
+        }
+    }
+# encodage 
+    chart_url = (
+        "https://quickchart.io/chart?c="
+        + urllib.parse.quote(json.dumps(config))
+    )
+#Ouvrir le graphique directement  dans le navigateur web
+    print("Ouverture du graphique...")
+    webbrowser.open(chart_url)
+
+if __name__ == "__main__":
+    generer_graphique_juxtapose()
